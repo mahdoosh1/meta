@@ -27,7 +27,7 @@ class ActivityButton(QPushButton):
 class IDEWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Token/Parser IDE")
+        self.setWindowTitle("MetaSyntax")
         self.resize(1100, 700)
         self.setStyleSheet("background-color: #1e1e1e; font-family: 'Ubuntu Mono', sans-serif;")
 
