@@ -4,4 +4,8 @@ from .parser import Parser, organize_pattern
 # from .use import use
 
 def metaclass_LexerTextHighlighter(description: str):
-    return metaclass(organize_pattern(Parser(Lexer(description).tokenize()).parse()))
+    lexed = Lexer(description).tokenize()
+    parsed = Parser(lexed).parse()
+    organized = organize_pattern(parsed)
+    meta = metaclass(organized)
+    return meta

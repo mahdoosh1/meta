@@ -1,9 +1,9 @@
 import sys
-from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,  # type: ignore
                                QHBoxLayout, QPushButton, QListWidget, QTabWidget, 
                                QSplitter, QPlainTextEdit, QLabel, QFrame)
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QSyntaxHighlighter
+from PySide6.QtCore import Qt # type: ignore
+from PySide6.QtGui import QFont # type: ignore
 
 # Assumes tokenparser package exists as per your import
 from tokenparser.all import TokenDescHighlighter, metaclass_LexerTextHighlighter
@@ -39,7 +39,7 @@ class IDEWindow(QMainWindow):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
 
         self._init_activity_bar()
-        #self._init_sidebar()
+        self._init_sidebar()
         self._init_editor_area()
 
         # Highlighter Initialization & Signal Connection
@@ -111,8 +111,34 @@ class IDEWindow(QMainWindow):
         v_split.setHandleWidth(1)
 
         # Editors
-        self.def_edit = self._create_editor('Identifier {\n    Special [\n        If r"if" ,\n        Else r"else"\n    ]\n    Normal r"[a-zA-Z_][a-zA-Z_0-9]*"\n}\nSymbol {\n    Special [\n        LeftParen r"\\(" ,\n        RightParen r"\\)"\n    ]\n}')
-        self.test_edit = self._create_editor('if (condition){\n    this();\n} else {\n    that();\n}')
+        self.def_edit = self._create_editor("""Identifier {
+    Special [
+        Special r"Special" #C586C0, 
+        Normal r"Normal" #C586C0,
+        Token r"\\\\b[a-zA-Z_]\\\\w*\\b(?=\\\\s*\\\\{)" #DCDCAA
+    ] 
+    Normal r"[a-zA-Z_][a-zA-Z_0-9]*" #9CDCFE
+}
+Symbol {
+    Special [
+        LeftBrace r"\\{",
+        RightBrace r"\\}",
+        LeftBracket r"\\[",
+        RightBracket r"\\]"
+    ] #FF00FF
+}
+String {
+    Normal r"r\\"([^\\\\\\"]|[\\\\\\\\\\\\\\s\\\\\\S])*\\"" #6A9955
+}
+Color {
+    Normal r"#[0-9a-fA-F]{6}" #CE6021
+}""".strip())
+        self.test_edit = self._create_editor(r"""
+if (condition){
+    this();
+} else {
+    that();
+}""".strip())
 
         # Info Panel
         info_panel = QWidget()
@@ -166,6 +192,7 @@ class IDEWindow(QMainWindow):
             # Force refresh
             self.test_edit.document().markContentsDirty(0, self.test_edit.document().characterCount())
         except Exception as e:
+            raise e
             # Prevents crash if regex/def is temporarily invalid while typing
             print(f"Highlighter update skipped: {e}")
 

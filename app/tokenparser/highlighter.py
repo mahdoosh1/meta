@@ -1,5 +1,5 @@
-from PySide6.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor, QFont
-from PySide6.QtCore import QRegularExpression
+from PySide6.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor # type: ignore
+from PySide6.QtCore import QRegularExpression # type: ignore
 from .parser import patternpairtype
 import re
 
@@ -36,7 +36,12 @@ class TokenDescHighlighter(QSyntaxHighlighter):
         # 5. Pattern (Green) -> r"..."
         pattern_fmt = QTextCharFormat()
         pattern_fmt.setForeground(QColor("#6A9955")) # Green
-        self.rules.append((QRegularExpression(r'"[^"]*"'), pattern_fmt))
+        self.rules.append((QRegularExpression(r'"([^\"\\]|\\[\s\S])*"'), pattern_fmt))
+
+        # 5. Pattern (Green) -> r"..."
+        pattern_fmt = QTextCharFormat()
+        pattern_fmt.setForeground(QColor("#CE6021")) # Green
+        self.rules.append((QRegularExpression(r'#[0-9a-fA-F]{6}'), pattern_fmt))
 
     def highlightBlock(self, text):
         # Loop through rules. Later rules in the list overwrite earlier ones 
@@ -51,14 +56,17 @@ class TokenDescHighlighter(QSyntaxHighlighter):
 def metaclass_LexerTestHighlighter(patternpair: patternpairtype):
     normals = []
     specials = []
-    for pattern, _, category, _ in patternpair:
+    exceptional = []
+    for pattern, _, category, _, color in patternpair:
         pattern = f"(?:{pattern.pattern})"
-        if category == 'Normal':
+        if category == 'Normal' and color == "":
             normals.append(pattern)
-        elif category == 'Special':
+        elif category == 'Special' and color == "":
             specials.append(pattern)
-    normal_re = ("|".join(normals)) if normals else re.compile(r"(?!x)x")
-    special_re = ("|".join(specials)) if specials else re.compile(r"(?!x)x")
+        elif color:
+            exceptional.append((pattern, color))
+    normal_re = ("|".join(normals)) if normals else r"(?!x)x"
+    special_re = ("|".join(specials)) if specials else r"(?!x)x"
     class Highlighter(QSyntaxHighlighter):
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -71,6 +79,11 @@ def metaclass_LexerTestHighlighter(patternpair: patternpairtype):
             normal_token_fmt = QTextCharFormat()
             normal_token_fmt.setForeground(QColor("#DCDCAA")) # Yellow
             self.rules.append((QRegularExpression(normal_re), normal_token_fmt))
+            
+            for pattern, color in exceptional:
+                exceptional_token_fmt = QTextCharFormat()
+                exceptional_token_fmt.setForeground(QColor(color))
+                self.rules.append((QRegularExpression(pattern), exceptional_token_fmt))
 
             special_token_fmt = QTextCharFormat()
             special_token_fmt.setForeground(QColor("#9CDCFE")) # Skyblue
