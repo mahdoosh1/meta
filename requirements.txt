@@ -1,0 +1,7 @@
+PySide6
+qtpy
+pyqode.core
+pyqode.python
+pyqode.json
+pyqode.qt
+pygments
