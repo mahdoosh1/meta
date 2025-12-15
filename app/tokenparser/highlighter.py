@@ -54,10 +54,8 @@ def metaclass_LexerTestHighlighter(patternpair: patternpairtype):
     for pattern, _, category, _ in patternpair:
         pattern = f"(?:{pattern.pattern})"
         if category == 'Normal':
-            print(pattern, "normal")
             normals.append(pattern)
         elif category == 'Special':
-            print(pattern, "special")
             specials.append(pattern)
     normal_re = ("|".join(normals)) if normals else re.compile(r"(?!x)x")
     special_re = ("|".join(specials)) if specials else re.compile(r"(?!x)x")
