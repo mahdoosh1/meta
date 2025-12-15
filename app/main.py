@@ -1,8 +1,8 @@
-import sys
+import sys, os
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,  # type: ignore
-                               QHBoxLayout, QPushButton, QListWidget, QTabWidget, 
-                               QSplitter, QPlainTextEdit, QLabel, QFrame)
-from PySide6.QtCore import Qt # type: ignore
+                               QHBoxLayout, QPushButton, QTabWidget, QLabel, QFrame, QTreeView,
+                               QSplitter, QPlainTextEdit, QStackedWidget, QFileSystemModel)
+from PySide6.QtCore import Qt, QDir # type: ignore
 from PySide6.QtGui import QFont # type: ignore
 
 # Assumes tokenparser package exists as per your import
@@ -24,12 +24,13 @@ class ActivityButton(QPushButton):
             QPushButton:hover {{ color: #ffffff; }}
         """)
 
+
 class IDEWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("MetaSyntax")
         self.resize(1100, 700)
-        self.setStyleSheet("background-color: #1e1e1e; font-family: 'Ubuntu Mono', sans-serif;")
+        self.setStyleSheet("background-color: #1e1e1e; font-family: 'Ubuntu Mono', monospace;")
 
         # Layout Setup
         central = QWidget()
@@ -37,6 +38,9 @@ class IDEWindow(QMainWindow):
         self.main_layout = QHBoxLayout(central)
         self.main_layout.setSpacing(0)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.sidebar_stack = QStackedWidget()
+        self.activity_buttons = []
 
         self._init_activity_bar()
         self._init_sidebar()
@@ -57,36 +61,67 @@ class IDEWindow(QMainWindow):
         layout = QVBoxLayout(bar)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
-        for char, active in [("F", False), ("T", True), ("G", False), ("D", False)]:
-            layout.addWidget(ActivityButton(char, active))
+
+        # (F)ile, (T)okens, (G)it/Version, (D)ebug - T is index 1
+        button_data = [("F", True), ("G", False), ("D", False)]
+        for index, (char, active) in enumerate(button_data):
+            button = ActivityButton(char, active)
+            # Connect the button click to the new switching method
+            button.clicked.connect(lambda checked, idx=index: self.switch_sidebar(idx))
+            layout.addWidget(button)
+            self.activity_buttons.append(button)
+
         layout.addStretch()
         self.main_layout.addWidget(bar)
 
     def _init_sidebar(self):
-        sidebar = QFrame()
-        sidebar.setFixedWidth(220)
-        sidebar.setStyleSheet("background-color: #252526;")
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        title = QLabel("TOKENS")
-        title.setStyleSheet("color: #BBBBBB; font-size: 11px; font-weight: bold; padding: 10px;")
-        layout.addWidget(title)
-
-        add_btn = QPushButton("Add")
-        add_btn.setStyleSheet("QPushButton { background-color: #007acc; color: white; border: none; padding: 6px; } QPushButton:hover { background-color: #0098ff; }")
+        # Main Sidebar container (QFrame, same as before)
+        sidebar_frame = QFrame()
+        sidebar_frame.setFixedWidth(220)
+        sidebar_frame.setStyleSheet("background-color: #252526;")
         
-        btn_wrap = QWidget()
-        btn_layout = QVBoxLayout(btn_wrap)
-        btn_layout.addWidget(add_btn)
-        layout.addWidget(btn_wrap)
+        # The QStackedWidget holds the actual panels
+        self.sidebar_stack.setStyleSheet("background-color: #252526;")
 
-        token_list = QListWidget()
-        token_list.setStyleSheet("QListWidget { border: none; background: transparent; color: #CCCCCC; outline: none; } QListWidget::item { padding: 5px; } QListWidget::item:selected { background-color: #37373d; }")
-        token_list.addItems(["Identifier", "Symbol"])
-        layout.addWidget(token_list)
-        self.main_layout.addWidget(sidebar)
+        # --- Panel 0: File Explorer (F) ---
+        file_panel = QWidget()
+        file_layout = QVBoxLayout(file_panel)
+        file_layout.setContentsMargins(10, 5, 10, 5)
+        file_layout.addWidget(QLabel("FILE EXPLORER"))
+        file_tree = QTreeView(file_panel)
+        model = QFileSystemModel(file_panel)
+        print(model.rootPath())
+        file_tree.setModel(model)
+        model.setRootPath("..")
+        file_layout.addWidget(file_tree)
+        self.sidebar_stack.addWidget(file_panel)
+
+        # --- Panels 1 & 2: Empty Placeholders (G, D) ---
+        self.sidebar_stack.addWidget(QLabel("GIT/VERSION CONTROL"))
+        self.sidebar_stack.addWidget(QLabel("DEBUG VIEW"))
+
+        main_sidebar_layout = QVBoxLayout(sidebar_frame)
+        main_sidebar_layout.addWidget(self.sidebar_stack)
+        main_sidebar_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.main_layout.addWidget(sidebar_frame)
+        
+        # Initialize to show the "Tokens" panel (index 1)
+        self.sidebar_stack.setCurrentIndex(0)
+
+    # --- NEW METHOD TO HANDLE SWITCHING ---
+    def switch_sidebar(self, index):
+        """
+        Updates the QStackedWidget and the visual style of the activity buttons.
+        """
+        # 1. Update Stacked Widget
+        self.sidebar_stack.setCurrentIndex(index)
+
+        # 2. Update Button Styles
+        for i, button in enumerate(self.activity_buttons):
+            is_active = (i == index)
+            button.active = is_active
+            button._apply_style()
 
     def _init_editor_area(self):
         tabs = QTabWidget()
@@ -179,14 +214,14 @@ if (condition){
 
     def update_test_highlighter(self):
         """Recreates the test highlighter based on current definitions."""
-        if self.hl_test:
-            self.hl_test.setDocument(None)
-            self.hl_test.deleteLater()
-            self.hl_test = None
 
         try:
             # Generate new Class from current text and Instantiate
             GeneratedHighlighter = metaclass_LexerTextHighlighter(self.def_edit.toPlainText())
+            if self.hl_test:
+                self.hl_test.setDocument(None)
+                self.hl_test.deleteLater()
+                self.hl_test = None
             self.hl_test = GeneratedHighlighter(self.test_edit.document())
             
             # Force refresh
