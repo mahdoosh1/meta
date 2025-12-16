@@ -47,7 +47,7 @@ class Parser:
     
     def parse_pattern(self):
         pattern = self.consume(TokenType.STRING).value
-        pattern = re.compile(ast.literal_eval(pattern))
+        pattern = re.compile(pattern[2:-1])
         return {'pattern':pattern}
     
     def parse_color(self):
@@ -101,7 +101,7 @@ def organize_pattern(tokens: parsetype) -> patternpairtype:
     patterns = []
     for name, desc in tokens.items():
         categories = list(desc['categories'].items())
-        categories.sort(key=lambda i:i[0]=='Special')
+        #categories.sort(key=lambda i:i[0]=='Special')
         for category, info in categories:
             catcolor = info.get('color') or ""
             if category == 'Normal':

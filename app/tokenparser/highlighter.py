@@ -58,13 +58,14 @@ def metaclass_LexerTestHighlighter(patternpair: patternpairtype):
     specials = []
     exceptional = []
     for pattern, _, category, _, color in patternpair:
-        pattern = f"(?:{pattern.pattern})"
-        if category == 'Normal' and color == "":
-            normals.append(pattern)
-        elif category == 'Special' and color == "":
-            specials.append(pattern)
-        elif color:
-            exceptional.append((pattern, color))
+        #pattern = f"(?:{pattern.pattern})"
+        #if category == 'Normal' and color == "":
+        #    normals.append(pattern)
+        #elif category == 'Special' and color == "":
+        #    specials.append(pattern)
+        #elif color:
+        #    exceptional.append((pattern, color))
+        exceptional.append((pattern.pattern, color))
     normal_re = ("|".join(normals)) if normals else r"(?!x)x"
     special_re = ("|".join(specials)) if specials else r"(?!x)x"
     class Highlighter(QSyntaxHighlighter):

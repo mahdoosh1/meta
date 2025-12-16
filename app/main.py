@@ -1,18 +1,43 @@
 import sys, os
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,  # type: ignore
                                QHBoxLayout, QPushButton, QTabWidget, QLabel, QFrame, QTreeView,
-                               QSplitter, QPlainTextEdit, QStackedWidget, QFileSystemModel)
-from PySide6.QtCore import Qt, QDir # type: ignore
-from PySide6.QtGui import QFont # type: ignore
+                               QSplitter, QPlainTextEdit, QStackedWidget, QFileSystemModel, QStatusBar)
+from PySide6.QtCore import Qt, QDir, QPoint, Signal, QEvent # type: ignore 
+from PySide6.QtGui import QFont, QTextCursor # type: ignore
 
 # Assumes tokenparser package exists as per your import
-from tokenparser.all import TokenDescHighlighter, metaclass_LexerTextHighlighter
+from tokenparser.all import TokenDescHighlighter, metaclass_LexerTextHighlighter, organizer, lexer, coord_token
+
+code = """
+Identifier {
+    Normal r"[a-zA-Z_][a-zA-Z_0-9]*" #9CDCFE
+    Special [
+        Token r"[a-zA-Z_][a-zA-Z_0-9]*\\b(?=\\s*\\{)" #DCDCAA,
+        Special r"Special" #C586C0,
+        Normal r"Normal" #C586C0
+    ]
+}
+Symbol {
+    Special [
+        LeftBrace r"\\{",
+        RightBrace r"\\}",
+        LeftBracket r"\\[",
+        RightBracket r"\\]"
+    ] #FFFFFF
+}
+String {
+    Normal r"r\\"([^\\"\\\\]|\\\\[\\s\\S])*\\"" #6A9955
+}
+Color {
+    Normal r"#[0-9a-fA-F]{6}" #CE6021
+}
+""".strip()
 
 class ActivityButton(QPushButton):
     def __init__(self, text, active=False):
         super().__init__(text)
         self.setFixedSize(50, 50)
-        self.setCursor(Qt.PointingHandCursor)
+        # self.setCursor(Qt.PointingHandCursor)
         self.active = active
         self._apply_style()
 
@@ -24,6 +49,25 @@ class ActivityButton(QPushButton):
             QPushButton:hover {{ color: #ffffff; }}
         """)
 
+class HoverPlainTextEdit(QPlainTextEdit):
+    # Signal carries the formatted coordinate string to be displayed
+    cursorChange = Signal(int, int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.installEventFilter(self)
+        self.cursorPositionChanged.connect(self._emit_cursor_location)
+        self._emit_cursor_location()
+
+    def _emit_cursor_location(self):
+        """
+        Calculates and emits the current cursor location (line and column)
+        whenever the cursorPositionChanged signal is triggered.
+        """
+        cursor = self.textCursor()
+        line = cursor.blockNumber() + 1
+        col = cursor.columnNumber() + 1
+        self.cursorChange.emit(line, col)
 
 class IDEWindow(QMainWindow):
     def __init__(self):
@@ -53,6 +97,19 @@ class IDEWindow(QMainWindow):
 
         # Re-build test highlighter when definition changes
         self.def_edit.textChanged.connect(self.update_test_highlighter)
+        self.test_edit.textChanged.connect(self.update_lexer)
+    
+    def update_info_panel(self, line, col):
+        selected = coord_token(self.lexed, line, col)
+        token, text, category, line, col = selected
+            
+        # 3. Emit the signal with the calculated coordinates
+        formatted_text = f"{text}\n\n{token} ({category})\n\nLine {line} Column {col}"
+        """
+        Handles combining the static token info with the dynamic click info.
+        The text will no longer be reset by mouse movement.
+        """
+        self.info_body.setText(formatted_text)
 
     def _init_activity_bar(self):
         bar = QFrame()
@@ -146,34 +203,8 @@ class IDEWindow(QMainWindow):
         v_split.setHandleWidth(1)
 
         # Editors
-        self.def_edit = self._create_editor("""Identifier {
-    Special [
-        Special r"Special" #C586C0, 
-        Normal r"Normal" #C586C0,
-        Token r"\\\\b[a-zA-Z_]\\\\w*\\b(?=\\\\s*\\\\{)" #DCDCAA
-    ] 
-    Normal r"[a-zA-Z_][a-zA-Z_0-9]*" #9CDCFE
-}
-Symbol {
-    Special [
-        LeftBrace r"\\{",
-        RightBrace r"\\}",
-        LeftBracket r"\\[",
-        RightBracket r"\\]"
-    ] #FF00FF
-}
-String {
-    Normal r"r\\"([^\\\\\\"]|[\\\\\\\\\\\\\\s\\\\\\S])*\\"" #6A9955
-}
-Color {
-    Normal r"#[0-9a-fA-F]{6}" #CE6021
-}""".strip())
-        self.test_edit = self._create_editor(r"""
-if (condition){
-    this();
-} else {
-    that();
-}""".strip())
+        self.def_edit = self._create_editor(code)
+        self.test_edit = self._create_editor(code)
 
         # Info Panel
         info_panel = QWidget()
@@ -182,18 +213,32 @@ if (condition){
         info_layout.setContentsMargins(0,0,0,0)
         
         info_head = QLabel("Selected Token")
-        info_head.setStyleSheet("background-color: #333333; color: #CCCCCC; padding: 5px; font-size: 11px;")
+        # MODIFIED: Reduced vertical padding for a shorter header
+        info_head.setStyleSheet("background-color: #333333; color: #CCCCCC; padding: 2px 5px; font-size: 11px;") 
         info_layout.addWidget(info_head)
         
-        info_body = QLabel("if (cond...\n\nIdentifier[If] (Special)")
-        info_body.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        info_body.setStyleSheet("color: #d4d4d4; padding: 10px; font-family: Consolas; font-size: 12px;")
-        info_layout.addWidget(info_body)
+        # NEW FIX: Create a container widget for the info body to prevent layout instability
+        info_body_container = QWidget()
+        body_layout = QVBoxLayout(info_body_container)
+        body_layout.setContentsMargins(10, 5, 10, 5) # Adding a little margin inside the body
+
+        # Store info_body as self.info_body and use the attribute from IDEWindow.__init__
+        self.info_body = QLabel()
+        self.info_body.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.info_body.setStyleSheet("color: #d4d4d4; font-family: Consolas; font-size: 12px;")
+        
+        body_layout.addWidget(self.info_body)
+        body_layout.addStretch(1) # ADDED: Crucial to push the label to the top and absorb extra space
+        
+        info_layout.addWidget(info_body_container) # Add the container to the main panel layout
+        
+        # NEW: Connect the editor signal to the info panel label
+        self.test_edit.cursorChange.connect(self.update_info_panel)
 
         # Assemble
         v_split.addWidget(self.test_edit)
         v_split.addWidget(info_panel)
-        v_split.setSizes([400, 200])
+        v_split.setSizes([500, 100])
 
         h_split.addWidget(self.def_edit)
         h_split.addWidget(v_split)
@@ -205,19 +250,24 @@ if (condition){
         self.main_layout.addWidget(tabs)
 
     def _create_editor(self, text):
-        edit = QPlainTextEdit()
+        edit = HoverPlainTextEdit(self)
         edit.setFrameShape(QFrame.NoFrame)
         edit.setFont(QFont("Ubuntu Mono", 12))
         edit.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4;")
         edit.setPlainText(text)
         return edit
-
+    
+    def update_lexer(self):
+        self.organized = organizer(self.def_edit.toPlainText())
+        self.lexed = lexer(self.organized, self.test_edit.toPlainText())
+        print("lexer updated")
     def update_test_highlighter(self):
         """Recreates the test highlighter based on current definitions."""
 
         try:
             # Generate new Class from current text and Instantiate
-            GeneratedHighlighter = metaclass_LexerTextHighlighter(self.def_edit.toPlainText())
+            self.update_lexer()
+            GeneratedHighlighter = metaclass_LexerTextHighlighter(self.organized)
             if self.hl_test:
                 self.hl_test.setDocument(None)
                 self.hl_test.deleteLater()
